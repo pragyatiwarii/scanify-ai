@@ -1,0 +1,19 @@
+# Python
+Backend/venv/
+Backend/__pycache__/
+Backend/uploads/
+Backend/processed/
+*.pyc
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Environment files
+.env
+frontend/.env
+Backend/.env
+
+# OS / Editor
+.DS_Store
+.vscode/
