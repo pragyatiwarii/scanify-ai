@@ -1,11 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
+
+import type { Session } from "@supabase/supabase-js";
 import type { Area } from "react-easy-crop";
 
 import "./App.css";
 
 import type { Tool, ScanMode, FilterType } from "./types";
 import { menuItems } from "./constants/tools";
+
+import { supabase } from "./lib/supabaseClient";
+import AuthPage from "./auth/AuthPage";
 
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
@@ -23,6 +28,17 @@ import RotateTool from "./tools/RotateTool";
 const API_BASE_URL = "http://127.0.0.1:8000";
 
 function App() {
+  // =========================
+  // AUTHENTICATION STATE
+  // =========================
+
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // =========================
+  // EXISTING SCANIFY STATE
+  // =========================
+
   const [activeTool, setActiveTool] = useState<Tool>("upload");
 
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
@@ -31,33 +47,157 @@ function App() {
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string>("");
 
   const [scannedImageUrl, setScannedImageUrl] = useState<string>("");
-  const [autoScannedImageUrl, setAutoScannedImageUrl] = useState<string>("");
+  const [autoScannedImageUrl, setAutoScannedImageUrl] =
+    useState<string>("");
 
   const [imagePdfUrl, setImagePdfUrl] = useState<string>("");
   const [scannedPdfUrl, setScannedPdfUrl] = useState<string>("");
-  const [autoScannedPdfUrl, setAutoScannedPdfUrl] = useState<string>("");
+  const [autoScannedPdfUrl, setAutoScannedPdfUrl] =
+    useState<string>("");
 
   const [filteredImageUrl, setFilteredImageUrl] = useState<string>("");
   const [croppedImageUrl, setCroppedImageUrl] = useState<string>("");
   const [resizedImageUrl, setResizedImageUrl] = useState<string>("");
-  const [compressedImageUrl, setCompressedImageUrl] = useState<string>("");
+  const [compressedImageUrl, setCompressedImageUrl] =
+    useState<string>("");
   const [rotatedImageUrl, setRotatedImageUrl] = useState<string>("");
 
   const [message, setMessage] = useState<string>("");
 
   const [scanMode, setScanMode] = useState<ScanMode>("clean");
-  const [filterType, setFilterType] = useState<FilterType>("grayscale");
+  const [filterType, setFilterType] =
+    useState<FilterType>("grayscale");
 
   const [width, setWidth] = useState<number>(500);
   const [height, setHeight] = useState<number>(500);
   const [quality, setQuality] = useState<number>(60);
   const [angle, setAngle] = useState<number>(90);
 
-  const [crop, setCrop] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState<number>(1);
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+  const [crop, setCrop] = useState<{ x: number; y: number }>({
+    x: 0,
+    y: 0,
+  });
 
-  const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const [zoom, setZoom] = useState<number>(1);
+
+  const [croppedAreaPixels, setCroppedAreaPixels] =
+    useState<Area | null>(null);
+
+  // =========================
+  // CHECK SUPABASE SESSION
+  // =========================
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadSession = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error("Error loading session:", error);
+        }
+
+        if (isMounted) {
+          setSession(data.session);
+          setAuthLoading(false);
+        }
+      } catch (error) {
+        console.error("Unexpected authentication error:", error);
+
+        if (isMounted) {
+          setSession(null);
+          setAuthLoading(false);
+        }
+      }
+    };
+
+    loadSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+      setAuthLoading(false);
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+
+  const handleLogout = async () => {
+  const { error } = await supabase.auth.signOut({
+    scope: "local",
+  });
+
+  if (error) {
+    console.error("Logout error:", error);
+    setMessage("Could not log out. Please try again.");
+    return;
+  }
+
+  // Clear the current user's local workspace
+  setActiveTool("upload");
+  setSelectedImage(null);
+
+  setPreviewUrl("");
+  setUploadedImageUrl("");
+
+  setScannedImageUrl("");
+  setAutoScannedImageUrl("");
+
+  setImagePdfUrl("");
+  setScannedPdfUrl("");
+  setAutoScannedPdfUrl("");
+
+  setFilteredImageUrl("");
+  setCroppedImageUrl("");
+  setResizedImageUrl("");
+  setCompressedImageUrl("");
+  setRotatedImageUrl("");
+
+  setMessage("");
+
+  setCrop({ x: 0, y: 0 });
+  setZoom(1);
+  setCroppedAreaPixels(null);
+};
+
+  // =========================
+  // AUTH LOADING SCREEN
+  // =========================
+
+  if (authLoading) {
+    return (
+      <div className="auth-page">
+        <div className="auth-card">
+          <div className="auth-brand">
+            <h1>Scanify AI</h1>
+            <p>Loading your workspace...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================
+  // SHOW LOGIN IF NOT LOGGED IN
+  // =========================
+
+  if (!session) {
+    return <AuthPage />;
+  }
+
+  // =========================
+  // IMAGE SELECTION
+  // =========================
+
+  const handleImageChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = event.target.files?.[0];
 
     if (!file) return;
@@ -97,9 +237,16 @@ function App() {
     return true;
   };
 
-  const onCropComplete = (_croppedArea: Area, croppedAreaPixelsValue: Area) => {
+  const onCropComplete = (
+    _croppedArea: Area,
+    croppedAreaPixelsValue: Area
+  ) => {
     setCroppedAreaPixels(croppedAreaPixelsValue);
   };
+
+  // =========================
+  // UPLOAD
+  // =========================
 
   const handleUpload = async () => {
     if (!requireImage()) return;
@@ -126,6 +273,10 @@ function App() {
     }
   };
 
+  // =========================
+  // DOCUMENT SCANNER
+  // =========================
+
   const handleScanDocument = async () => {
     if (!requireImage()) return;
 
@@ -143,6 +294,7 @@ function App() {
       );
 
       const scannedUrl = URL.createObjectURL(response.data);
+
       setScannedImageUrl(scannedUrl);
       setMessage("Document scanned successfully");
     } catch (error) {
@@ -168,13 +320,22 @@ function App() {
       );
 
       const autoScannedUrl = URL.createObjectURL(response.data);
+
       setAutoScannedImageUrl(autoScannedUrl);
-      setMessage("Document auto-cropped and scanned successfully");
+      setMessage(
+        "Document auto-cropped and scanned successfully"
+      );
     } catch (error) {
       console.error(error);
-      setMessage("Something went wrong while auto-scanning document");
+      setMessage(
+        "Something went wrong while auto-scanning document"
+      );
     }
   };
+
+  // =========================
+  // PDF TOOLS
+  // =========================
 
   const handleImageToPdf = async () => {
     if (!requireImage()) return;
@@ -192,11 +353,14 @@ function App() {
       );
 
       const pdfUrl = URL.createObjectURL(response.data);
+
       setImagePdfUrl(pdfUrl);
       setMessage("Image converted to PDF successfully");
     } catch (error) {
       console.error(error);
-      setMessage("Something went wrong while converting image to PDF");
+      setMessage(
+        "Something went wrong while converting image to PDF"
+      );
     }
   };
 
@@ -221,21 +385,30 @@ function App() {
 
       if (autoCrop) {
         setAutoScannedPdfUrl(pdfUrl);
-        setMessage("Auto-cropped scanned PDF created successfully");
+        setMessage(
+          "Auto-cropped scanned PDF created successfully"
+        );
       } else {
         setScannedPdfUrl(pdfUrl);
         setMessage("Scanned PDF created successfully");
       }
     } catch (error) {
       console.error(error);
-      setMessage("Something went wrong while creating scanned PDF");
+      setMessage(
+        "Something went wrong while creating scanned PDF"
+      );
     }
   };
+
+  // =========================
+  // FILTERS
+  // =========================
 
   const handleApplyFilter = async () => {
     if (!requireImage()) return;
 
     const formData = new FormData();
+
     formData.append("file", selectedImage as File);
     formData.append("filter_type", filterType);
 
@@ -249,13 +422,20 @@ function App() {
       );
 
       const filteredUrl = URL.createObjectURL(response.data);
+
       setFilteredImageUrl(filteredUrl);
       setMessage("Filter applied successfully");
     } catch (error) {
       console.error(error);
-      setMessage("Something went wrong while applying filter");
+      setMessage(
+        "Something went wrong while applying filter"
+      );
     }
   };
+
+  // =========================
+  // CROP
+  // =========================
 
   const handleCrop = async () => {
     if (!requireImage()) return;
@@ -266,11 +446,24 @@ function App() {
     }
 
     const formData = new FormData();
+
     formData.append("file", selectedImage as File);
-    formData.append("x", String(Math.round(croppedAreaPixels.x)));
-    formData.append("y", String(Math.round(croppedAreaPixels.y)));
-    formData.append("width", String(Math.round(croppedAreaPixels.width)));
-    formData.append("height", String(Math.round(croppedAreaPixels.height)));
+    formData.append(
+      "x",
+      String(Math.round(croppedAreaPixels.x))
+    );
+    formData.append(
+      "y",
+      String(Math.round(croppedAreaPixels.y))
+    );
+    formData.append(
+      "width",
+      String(Math.round(croppedAreaPixels.width))
+    );
+    formData.append(
+      "height",
+      String(Math.round(croppedAreaPixels.height))
+    );
 
     try {
       const response = await axios.post(
@@ -282,6 +475,7 @@ function App() {
       );
 
       const croppedUrl = URL.createObjectURL(response.data);
+
       setCroppedImageUrl(croppedUrl);
       setMessage("Image cropped successfully");
     } catch (error) {
@@ -289,6 +483,10 @@ function App() {
       setMessage("Something went wrong while cropping image");
     }
   };
+
+  // =========================
+  // RESIZE
+  // =========================
 
   const handleResize = async () => {
     if (!requireImage()) return;
@@ -299,6 +497,7 @@ function App() {
     }
 
     const formData = new FormData();
+
     formData.append("file", selectedImage as File);
     formData.append("width", String(width));
     formData.append("height", String(height));
@@ -313,6 +512,7 @@ function App() {
       );
 
       const resizedUrl = URL.createObjectURL(response.data);
+
       setResizedImageUrl(resizedUrl);
       setMessage("Image resized successfully");
     } catch (error) {
@@ -320,6 +520,10 @@ function App() {
       setMessage("Something went wrong while resizing image");
     }
   };
+
+  // =========================
+  // COMPRESS
+  // =========================
 
   const handleCompress = async () => {
     if (!requireImage()) return;
@@ -330,6 +534,7 @@ function App() {
     }
 
     const formData = new FormData();
+
     formData.append("file", selectedImage as File);
     formData.append("quality", String(quality));
 
@@ -343,18 +548,26 @@ function App() {
       );
 
       const compressedUrl = URL.createObjectURL(response.data);
+
       setCompressedImageUrl(compressedUrl);
       setMessage("Image compressed successfully");
     } catch (error) {
       console.error(error);
-      setMessage("Something went wrong while compressing image");
+      setMessage(
+        "Something went wrong while compressing image"
+      );
     }
   };
+
+  // =========================
+  // ROTATE
+  // =========================
 
   const handleRotate = async () => {
     if (!requireImage()) return;
 
     const formData = new FormData();
+
     formData.append("file", selectedImage as File);
     formData.append("angle", String(angle));
 
@@ -368,6 +581,7 @@ function App() {
       );
 
       const rotatedUrl = URL.createObjectURL(response.data);
+
       setRotatedImageUrl(rotatedUrl);
       setMessage("Image rotated successfully");
     } catch (error) {
@@ -375,6 +589,10 @@ function App() {
       setMessage("Something went wrong while rotating image");
     }
   };
+
+  // =========================
+  // TOOL PANEL
+  // =========================
 
   const renderTool = () => {
     switch (activeTool) {
@@ -466,6 +684,10 @@ function App() {
     }
   };
 
+  // =========================
+  // RESULT PANEL
+  // =========================
+
   const renderResult = () => {
     if (activeTool === "scanner") {
       return (
@@ -486,7 +708,8 @@ function App() {
             />
           )}
 
-          {!scannedImageUrl && !autoScannedImageUrl && <EmptyResult />}
+          {!scannedImageUrl &&
+            !autoScannedImageUrl && <EmptyResult />}
         </>
       );
     }
@@ -555,7 +778,12 @@ function App() {
   };
 
   const activeToolLabel =
-    menuItems.find((item) => item.key === activeTool)?.label || "Upload";
+    menuItems.find((item) => item.key === activeTool)?.label ||
+    "Upload";
+
+  // =========================
+  // MAIN SCANIFY DASHBOARD
+  // =========================
 
   return (
     <div className="app-shell">
@@ -570,6 +798,8 @@ function App() {
           activeToolLabel={activeToolLabel}
           selectedImage={selectedImage}
           onImageChange={handleImageChange}
+           userEmail={session.user.email || "User"}
+  onLogout={handleLogout}
         />
 
         {message && <p className="message">{message}</p>}
