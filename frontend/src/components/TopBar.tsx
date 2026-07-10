@@ -1,12 +1,16 @@
 type TopBarProps = {
   activeToolLabel: string;
+
   selectedImage: File | null;
+
   onImageChange: (
     event: React.ChangeEvent<HTMLInputElement>
   ) => void;
 
   userEmail?: string;
   onLogout?: () => void;
+
+  showImagePicker?: boolean;
 };
 
 function TopBar({
@@ -15,29 +19,40 @@ function TopBar({
   onImageChange,
   userEmail,
   onLogout,
+  showImagePicker = true,
 }: TopBarProps) {
   return (
     <header className="top-bar">
       <div className="top-bar-left">
         <h2>{activeToolLabel}</h2>
 
-        <div className="file-status-row">
+        {showImagePicker && (
+          <div className="file-status-row">
+            <p>
+              {selectedImage
+                ? `Selected file: ${selectedImage.name}`
+                : "No image selected yet"}
+            </p>
+
+            <label className="quick-upload">
+              {selectedImage
+                ? "Change Image"
+                : "Choose Image"}
+
+              <input
+                type="file"
+                accept="image/*"
+                onChange={onImageChange}
+              />
+            </label>
+          </div>
+        )}
+
+        {!showImagePicker && (
           <p>
-            {selectedImage
-              ? `Selected file: ${selectedImage.name}`
-              : "No image selected yet"}
+            Access and manage your privately saved files.
           </p>
-
-          <label className="quick-upload">
-            {selectedImage ? "Change Image" : "Choose Image"}
-
-            <input
-              type="file"
-              accept="image/*"
-              onChange={onImageChange}
-            />
-          </label>
-        </div>
+        )}
       </div>
 
       {userEmail && onLogout && (
@@ -46,15 +61,20 @@ function TopBar({
             className="profile-icon"
             title={userEmail}
             aria-label={`Logged in as ${userEmail}`}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path
-                d="M12 12c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5Zm0 2c-4.42 0-8 2.24-8 5v1c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-1c0-2.76-3.58-5-8-5Z"
-              />
-            </svg>
+          ><svg
+  viewBox="0 0 24 24"
+  aria-hidden="true"
+>
+  <circle
+    cx="12"
+    cy="8"
+    r="4"
+  />
+
+  <path
+    d="M4 21c0-4.42 3.58-8 8-8s8 3.58 8 8"
+  />
+</svg>
           </div>
 
           <button

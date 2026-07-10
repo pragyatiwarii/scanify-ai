@@ -2,6 +2,7 @@ import type { MenuItem } from "../types";
 
 export const menuItems: MenuItem[] = [
   { key: "upload", label: "Upload" },
+  { key: "documents", label: "My Documents" },
   { key: "scanner", label: "Scanner" },
   { key: "pdf", label: "PDF Tools" },
   { key: "filters", label: "Filters" },

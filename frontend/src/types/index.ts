@@ -1,5 +1,6 @@
 export type Tool =
   | "upload"
+  | "documents"
   | "scanner"
   | "pdf"
   | "filters"
