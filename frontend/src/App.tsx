@@ -29,10 +29,12 @@ import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import ResultImage from "./components/ResultImage";
 
+
 import UploadTool from "./tools/UploadTool";
 import MyDocumentsTool from "./tools/MyDocumentsTool";
 import ScannerTool from "./tools/ScannerTool";
 import PdfTool from "./tools/PdfTool";
+import OcrTool from "./tools/OcrTool";
 import FilterTool from "./tools/FilterTool";
 import CropTool from "./tools/CropTool";
 import ResizeTool from "./tools/ResizeTool";
@@ -1151,6 +1153,13 @@ function App() {
             }
           />
         );
+
+        case "ocr":
+  return (
+    <OcrTool
+      selectedImage={selectedImage}
+    />
+  );
 
       case "filters":
         return (

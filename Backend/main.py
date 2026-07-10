@@ -17,7 +17,7 @@ from image_utils import (
     scanned_image_to_pdf,
     apply_filter_image,
 )
-
+from ocr_utils import extract_text_from_image
 
 app = FastAPI()
 
@@ -750,3 +750,94 @@ async def apply_filter(
         media_type="image/jpeg",
         filename="filtered-image.jpg",
     )
+
+# =========================
+# EXTRACT TEXT WITH OCR
+# =========================
+
+@app.post("/extract-text")
+async def extract_text(
+    file: UploadFile = File(...),
+    language: str = Form("eng"),
+):
+    allowed_languages = ["eng"]
+
+    if language not in allowed_languages:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported OCR language",
+        )
+
+    original_filename = (
+        file.filename or "document.png"
+    )
+
+    file_extension = os.path.splitext(
+        original_filename
+    )[1]
+
+    if not file_extension:
+        file_extension = ".png"
+
+    unique_filename = (
+        f"{uuid.uuid4()}{file_extension}"
+    )
+
+    input_path = os.path.join(
+        UPLOAD_DIR,
+        unique_filename,
+    )
+
+    try:
+        content = await file.read()
+
+        if not content:
+            raise HTTPException(
+                status_code=400,
+                detail="Uploaded image is empty",
+            )
+
+        with open(input_path, "wb") as f:
+            f.write(content)
+
+        extracted_text = (
+            extract_text_from_image(
+                image_path=input_path,
+                language=language,
+            )
+        )
+
+        return {
+            "message": (
+                "Text extracted successfully"
+            ),
+            "text": extracted_text,
+            "word_count": len(
+                extracted_text.split()
+            ),
+            "character_count": len(
+                extracted_text
+            ),
+            "language": language,
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "OCR extraction error:",
+            error,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Could not extract text "
+                "from the image"
+            ),
+        )
+
+    finally:
+        if os.path.exists(input_path):
+            os.remove(input_path)

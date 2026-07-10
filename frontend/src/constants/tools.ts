@@ -5,6 +5,7 @@ export const menuItems: MenuItem[] = [
   { key: "documents", label: "My Documents" },
   { key: "scanner", label: "Scanner" },
   { key: "pdf", label: "PDF Tools" },
+  { key: "ocr", label: "OCR Text" },
   { key: "filters", label: "Filters" },
   { key: "crop", label: "Crop" },
   { key: "resize", label: "Resize" },

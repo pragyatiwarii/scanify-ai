@@ -3,13 +3,18 @@ export type Tool =
   | "documents"
   | "scanner"
   | "pdf"
+  | "ocr"
   | "filters"
   | "crop"
   | "resize"
   | "compress"
   | "rotate";
 
-export type ScanMode = "clean" | "color" | "gray" | "bw";
+export type ScanMode =
+  | "clean"
+  | "color"
+  | "gray"
+  | "bw";
 
 export type FilterType =
   | "grayscale"
