@@ -2112,3 +2112,117 @@ input[type="range"] {
   font-size: 12px;
   line-height: 1.5;
 }
+
+/* =========================
+   OCR DOCUMENT Q&A
+========================= */
+
+.ocr-qa-section {
+  margin-top: 30px;
+  padding-top: 24px;
+
+  border-top: 1px solid #273449;
+}
+
+.ocr-question-input {
+  width: 100%;
+  min-height: 96px;
+
+  box-sizing: border-box;
+
+  padding: 14px;
+
+  resize: vertical;
+
+  border: 1px solid #334155;
+  border-radius: 14px;
+
+  background: #020617;
+  color: #e2e8f0;
+
+  font-family:
+    "Inter",
+    "Segoe UI",
+    sans-serif;
+
+  font-size: 14px;
+  line-height: 1.6;
+
+  outline: none;
+
+  transition: 0.2s ease;
+}
+
+.ocr-question-input::placeholder {
+  color: #475569;
+}
+
+.ocr-question-input:focus {
+  border-color: #14b8a6;
+
+  box-shadow:
+    0 0 0 3px
+    rgba(20, 184, 166, 0.12);
+}
+
+.ocr-ask-btn {
+  margin-top: 12px;
+
+  width: 100%;
+
+  background:
+    rgba(20, 184, 166, 0.14);
+
+  border:
+    1px solid
+    rgba(20, 184, 166, 0.38);
+
+  color: #99f6e4;
+}
+
+.ocr-ask-btn:hover:not(:disabled) {
+  background: #0d9488;
+
+  color: white;
+}
+
+.ocr-answer-textarea {
+  width: 100%;
+  min-height: 220px;
+
+  box-sizing: border-box;
+
+  padding: 16px;
+
+  resize: vertical;
+
+  border: 1px solid #334155;
+  border-radius: 14px;
+
+  background: #020617;
+  color: #e2e8f0;
+
+  font-family:
+    "Inter",
+    "Segoe UI",
+    sans-serif;
+
+  font-size: 14px;
+  line-height: 1.7;
+
+  outline: none;
+
+  transition: 0.2s ease;
+}
+
+.ocr-answer-textarea::placeholder {
+  color: #475569;
+}
+
+.ocr-answer-textarea:focus {
+  border-color: #14b8a6;
+
+  box-shadow:
+    0 0 0 3px
+    rgba(20, 184, 166, 0.12);
+}

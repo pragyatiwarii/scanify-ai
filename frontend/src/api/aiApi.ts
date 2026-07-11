@@ -18,6 +18,17 @@ export type SummaryResult = {
   summary_word_count: number;
 };
 
+export type AskDocumentQuestionResult = {
+  message: string;
+  answer: string;
+  question: string;
+  model: string;
+  was_truncated: boolean;
+  input_character_count: number;
+  processed_character_count: number;
+  answer_word_count: number;
+};
+
 export async function summarizeText(
   text: string,
   summaryType: SummaryType = "short"
@@ -28,6 +39,22 @@ export async function summarizeText(
       {
         text,
         summary_type: summaryType,
+      }
+    );
+
+  return response.data;
+}
+
+export async function askDocumentQuestion(
+  text: string,
+  question: string
+): Promise<AskDocumentQuestionResult> {
+  const response =
+    await axios.post<AskDocumentQuestionResult>(
+      `${API_BASE_URL}/ask-document-question`,
+      {
+        text,
+        question,
       }
     );
 

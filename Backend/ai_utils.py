@@ -402,3 +402,143 @@ def summarize_document_text(
             summary.split()
         ),
     }
+
+# =========================
+# DOCUMENT QUESTION ANSWERING
+# =========================
+
+MAX_QA_INPUT_CHARS = 12000
+
+
+def prepare_text_for_qa(
+    text: str,
+) -> tuple[str, bool]:
+    cleaned_text = text.strip()
+
+    was_truncated = False
+
+    if len(cleaned_text) > MAX_QA_INPUT_CHARS:
+        cleaned_text = cleaned_text[
+            :MAX_QA_INPUT_CHARS
+        ]
+
+        was_truncated = True
+
+    return cleaned_text, was_truncated
+
+
+def clean_qa_answer_output(
+    answer: str,
+) -> str:
+    cleaned = answer.strip()
+
+    unwanted_prefixes = [
+        "Based on the document,",
+        "Based on the provided document,",
+        "According to the document,",
+        "According to the provided text,",
+        "The document says that",
+    ]
+
+    for prefix in unwanted_prefixes:
+        if cleaned.lower().startswith(
+            prefix.lower()
+        ):
+            cleaned = cleaned[
+                len(prefix):
+            ].strip()
+
+    return cleaned
+
+
+def answer_question_from_document(
+    text: str,
+    question: str,
+) -> dict:
+    cleaned_text, was_truncated = (
+        prepare_text_for_qa(text)
+    )
+
+    cleaned_question = question.strip()
+
+    if not cleaned_text:
+        raise ValueError(
+            "Document text is empty."
+        )
+
+    if not cleaned_question:
+        raise ValueError(
+            "Question cannot be empty."
+        )
+
+    client = get_ai_client()
+
+    response = client.chat.completions.create(
+        model=DEFAULT_SUMMARY_MODEL,
+        temperature=0,
+        max_tokens=380,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a strict document question-answering assistant "
+                    "inside Scanify AI. "
+                    "Answer using only the provided document text. "
+                    "Do not use outside knowledge. "
+                    "Do not infer extra people, events, or background unless "
+                    "they are clearly present in the document. "
+                    "If the answer is not present, say exactly: "
+                    "I could not find this in the document. "
+                    "Keep answers concise and factual."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "Answer the question using only the document text below.\n\n"
+                    "Rules:\n"
+                    "- Do not add an introduction.\n"
+                    "- Do not write long explanations.\n"
+                    "- Do not repeat the same idea again and again.\n"
+                    "- Use at most 5 bullet points if bullet points are needed.\n"
+                    "- For 'main idea' questions, answer in 2 to 4 sentences.\n"
+                    "- For 'who is mentioned' questions, list only names or entities "
+                    "clearly present in the document.\n"
+                    "- For Hindi documents, answer in English unless the user asks "
+                    "for Hindi.\n\n"
+                    f"Question:\n{cleaned_question}\n\n"
+                    "Document text:\n"
+                    "--------------------\n"
+                    f"{cleaned_text}"
+                ),
+            },
+        ],
+    )
+
+    answer = (
+        response.choices[0]
+        .message
+        .content
+        or ""
+    )
+
+    answer = clean_qa_answer_output(
+        answer
+    )
+
+    if not answer:
+        raise RuntimeError(
+            "AI returned an empty answer."
+        )
+
+    return {
+        "answer": answer,
+        "question": cleaned_question,
+        "model": DEFAULT_SUMMARY_MODEL,
+        "was_truncated": was_truncated,
+        "input_character_count": len(text),
+        "processed_character_count": len(cleaned_text),
+        "answer_word_count": len(
+            answer.split()
+        ),
+    }

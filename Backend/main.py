@@ -21,7 +21,11 @@ from ocr_utils import extract_text_from_image
 
 from pydantic import BaseModel
 
-from ai_utils import summarize_document_text
+
+from ai_utils import (
+    summarize_document_text,
+    answer_question_from_document,
+)
 
 app = FastAPI()
 
@@ -32,6 +36,10 @@ app = FastAPI()
 class SummarizeTextRequest(BaseModel):
     text: str
     summary_type: str = "short"
+
+class AskDocumentQuestionRequest(BaseModel):
+    text: str
+    question: str
 
 
 # =========================
@@ -917,5 +925,58 @@ async def summarize_text(
             detail=(
                 "Could not summarize text "
                 "with AI"
+            ),
+        )
+    
+# =========================
+# ASK QUESTION ABOUT DOCUMENT
+# =========================
+
+@app.post("/ask-document-question")
+async def ask_document_question(
+    request: AskDocumentQuestionRequest,
+):
+    if not request.text.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Document text cannot be empty",
+        )
+
+    if not request.question.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Question cannot be empty",
+        )
+
+    try:
+        result = answer_question_from_document(
+            text=request.text,
+            question=request.question,
+        )
+
+        return {
+            "message": (
+                "Question answered successfully"
+            ),
+            **result,
+        }
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+    except Exception as error:
+        print(
+            "AI document question error:",
+            error,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Could not answer question "
+                "from document"
             ),
         )

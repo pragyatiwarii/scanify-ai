@@ -13,6 +13,7 @@ import {
 } from "../api/storageApi";
 
 import {
+  askDocumentQuestion,
   summarizeText,
   type SummaryType,
 } from "../api/aiApi";
@@ -32,11 +33,6 @@ function OcrTool({
   // =========================
   // OCR STATE
   // =========================
-
-  const [
-  ocrLanguage,
-  setOcrLanguage,
-] = useState<OcrLanguage>("eng");
 
   const [
     extractedText,
@@ -62,6 +58,11 @@ function OcrTool({
     imagePreviewUrl,
     setImagePreviewUrl,
   ] = useState("");
+
+  const [
+    ocrLanguage,
+    setOcrLanguage,
+  ] = useState<OcrLanguage>("eng");
 
   // =========================
   // OCR CLOUD SAVE STATE
@@ -127,6 +128,45 @@ function OcrTool({
   ] = useState(false);
 
   // =========================
+  // DOCUMENT Q&A STATE
+  // =========================
+
+  const [
+    documentQuestion,
+    setDocumentQuestion,
+  ] = useState("");
+
+  const [
+    documentAnswer,
+    setDocumentAnswer,
+  ] = useState("");
+
+  const [
+    askingQuestion,
+    setAskingQuestion,
+  ] = useState(false);
+
+  const [
+    qaMessage,
+    setQaMessage,
+  ] = useState("");
+
+  const [
+    qaError,
+    setQaError,
+  ] = useState("");
+
+  const [
+    savingAnswerToCloud,
+    setSavingAnswerToCloud,
+  ] = useState(false);
+
+  const [
+    answerSavedToCloud,
+    setAnswerSavedToCloud,
+  ] = useState(false);
+
+  // =========================
   // IMAGE PREVIEW
   // =========================
 
@@ -170,6 +210,16 @@ function OcrTool({
 
     setSavingSummaryToCloud(false);
     setSummarySavedToCloud(false);
+
+    setDocumentQuestion("");
+    setDocumentAnswer("");
+
+    setAskingQuestion(false);
+    setQaMessage("");
+    setQaError("");
+
+    setSavingAnswerToCloud(false);
+    setAnswerSavedToCloud(false);
   }, [selectedImage]);
 
   // =========================
@@ -213,6 +263,26 @@ function OcrTool({
   const hasSummary =
     aiSummary.trim().length > 0;
 
+  const hasQuestion =
+    documentQuestion.trim().length > 0;
+
+  const hasAnswer =
+    documentAnswer.trim().length > 0;
+
+  const answerWordCount = useMemo(() => {
+    const trimmedAnswer =
+      documentAnswer.trim();
+
+    if (!trimmedAnswer) {
+      return 0;
+    }
+
+    return trimmedAnswer
+      .split(/\s+/)
+      .filter(Boolean)
+      .length;
+  }, [documentAnswer]);
+
   // =========================
   // EXTRACT TEXT
   // =========================
@@ -239,6 +309,11 @@ function OcrTool({
     setSummaryMessage("");
     setSummaryError("");
     setSummarySavedToCloud(false);
+
+    setDocumentAnswer("");
+    setQaMessage("");
+    setQaError("");
+    setAnswerSavedToCloud(false);
 
     try {
       const result =
@@ -275,6 +350,36 @@ function OcrTool({
   };
 
   // =========================
+  // OCR LANGUAGE CHANGE
+  // =========================
+
+  const handleLanguageChange = (
+    newLanguage: OcrLanguage
+  ) => {
+    setOcrLanguage(newLanguage);
+
+    setExtractedText("");
+    setAiSummary("");
+    setDocumentAnswer("");
+
+    setSuccessMessage("");
+    setErrorMessage("");
+
+    setCloudSaveMessage("");
+    setCloudSaveError("");
+
+    setSummaryMessage("");
+    setSummaryError("");
+
+    setQaMessage("");
+    setQaError("");
+
+    setSavedToCloud(false);
+    setSummarySavedToCloud(false);
+    setAnswerSavedToCloud(false);
+  };
+
+  // =========================
   // EDIT OCR TEXT
   // =========================
 
@@ -301,8 +406,17 @@ function OcrTool({
       setSummarySavedToCloud(false);
     }
 
+    if (documentAnswer) {
+      setQaMessage(
+        "OCR text changed. Ask again to get an answer from the updated text."
+      );
+
+      setAnswerSavedToCloud(false);
+    }
+
     setCloudSaveError("");
     setSummaryError("");
+    setQaError("");
   };
 
   // =========================
@@ -612,6 +726,219 @@ function OcrTool({
       }
     };
 
+  // =========================
+  // ASK DOCUMENT QUESTION
+  // =========================
+
+  const handleAskQuestion = async () => {
+    if (!hasText) {
+      setQaError(
+        "Extract text before asking a question."
+      );
+
+      return;
+    }
+
+    if (!hasQuestion) {
+      setQaError(
+        "Please type a question first."
+      );
+
+      return;
+    }
+
+    setAskingQuestion(true);
+
+    setQaMessage("");
+    setQaError("");
+
+    setAnswerSavedToCloud(false);
+
+    try {
+      const result =
+        await askDocumentQuestion(
+          extractedText,
+          documentQuestion
+        );
+
+      setDocumentAnswer(
+        result.answer
+      );
+
+      setQaMessage(
+        "Answer generated successfully."
+      );
+    } catch (error) {
+      console.error(
+        "Document Q&A error:",
+        error
+      );
+
+      setQaError(
+        "Could not answer this question."
+      );
+    } finally {
+      setAskingQuestion(false);
+    }
+  };
+
+  // =========================
+  // EDIT QUESTION / ANSWER
+  // =========================
+
+  const handleQuestionChange = (
+    newQuestion: string
+  ) => {
+    setDocumentQuestion(newQuestion);
+
+    setQaMessage("");
+    setQaError("");
+
+    if (answerSavedToCloud) {
+      setAnswerSavedToCloud(false);
+    }
+  };
+
+  const handleAnswerChange = (
+    newAnswer: string
+  ) => {
+    setDocumentAnswer(newAnswer);
+
+    setQaMessage("");
+
+    if (answerSavedToCloud) {
+      setAnswerSavedToCloud(false);
+
+      setQaMessage(
+        "Answer changed. Save again to store the updated version."
+      );
+    }
+
+    setQaError("");
+  };
+
+  // =========================
+  // COPY ANSWER
+  // =========================
+
+  const handleCopyAnswer = async () => {
+    if (!hasAnswer) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        documentAnswer
+      );
+
+      setQaMessage(
+        "Answer copied to clipboard."
+      );
+
+      setQaError("");
+    } catch (error) {
+      console.error(
+        "Answer copy error:",
+        error
+      );
+
+      setQaError(
+        "Could not copy answer."
+      );
+    }
+  };
+
+  // =========================
+  // DOWNLOAD ANSWER
+  // =========================
+
+  const handleDownloadAnswer = () => {
+    if (!hasAnswer) {
+      return;
+    }
+
+    const answerText =
+      `Question:\n${documentQuestion}\n\n` +
+      `Answer:\n${documentAnswer}`;
+
+    downloadTextFile(
+      answerText,
+      createAnswerFileName(
+        selectedImage?.name
+      )
+    );
+
+    setQaMessage(
+      "Answer downloaded successfully."
+    );
+
+    setQaError("");
+  };
+
+  // =========================
+  // SAVE ANSWER TO CLOUD
+  // =========================
+
+  const handleSaveAnswerToCloud =
+    async () => {
+      if (!hasAnswer) {
+        setQaError(
+          "There is no answer to save."
+        );
+
+        return;
+      }
+
+      if (answerSavedToCloud) {
+        return;
+      }
+
+      setSavingAnswerToCloud(true);
+
+      setQaMessage("");
+      setQaError("");
+
+      try {
+        const answerText =
+          `Question:\n${documentQuestion}\n\n` +
+          `Answer:\n${documentAnswer}`;
+
+        const answerFile = new File(
+          [answerText],
+          createAnswerFileName(
+            selectedImage?.name
+          ),
+          {
+            type: "text/plain;charset=utf-8",
+          }
+        );
+
+        await uploadDocumentToCloud(
+          answerFile
+        );
+
+        setAnswerSavedToCloud(true);
+
+        setQaMessage(
+          "Document answer saved privately to My Documents."
+        );
+      } catch (error) {
+        console.error(
+          "Answer cloud save error:",
+          error
+        );
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Could not save answer to cloud.";
+
+        setQaError(message);
+      } finally {
+        setSavingAnswerToCloud(false);
+      }
+    };
+
   return (
     <section className="tool-card ocr-tool">
       {/* =========================
@@ -625,8 +952,8 @@ function OcrTool({
 
         <p className="tool-description">
           Extract, review, edit, summarize,
-          download, and privately save text
-          from document images.
+          ask questions, download, and privately
+          save text from document images.
         </p>
       </div>
 
@@ -665,53 +992,38 @@ function OcrTool({
           </div>
 
           <div className="ocr-language-control">
-  <label htmlFor="ocr-language">
-    OCR Language
-  </label>
+            <label htmlFor="ocr-language">
+              OCR Language
+            </label>
 
-  <select
-    id="ocr-language"
-    value={ocrLanguage}
-    onChange={(event) => {
-      const newLanguage =
-        event.target.value as OcrLanguage;
+            <select
+              id="ocr-language"
+              value={ocrLanguage}
+              onChange={(event) =>
+                handleLanguageChange(
+                  event.target.value as OcrLanguage
+                )
+              }
+            >
+              <option value="eng">
+                English
+              </option>
 
-      setOcrLanguage(newLanguage);
+              <option value="hin">
+                Hindi
+              </option>
 
-      setExtractedText("");
-      setAiSummary("");
+              <option value="hin+eng">
+                Hindi + English
+              </option>
+            </select>
 
-      setSuccessMessage("");
-      setErrorMessage("");
-
-      setCloudSaveMessage("");
-      setCloudSaveError("");
-
-      setSummaryMessage("");
-      setSummaryError("");
-
-      setSavedToCloud(false);
-      setSummarySavedToCloud(false);
-    }}
-  >
-    <option value="eng">
-      English
-    </option>
-
-    <option value="hin">
-      Hindi
-    </option>
-
-    <option value="hin+eng">
-      Hindi + English
-    </option>
-  </select>
-
-  <p>
-    Choose Hindi for Devanagari documents.
-    Use Hindi + English for mixed pages.
-  </p>
-</div>
+            <p>
+              Choose Hindi for Devanagari
+              documents. Use Hindi + English
+              for mixed pages.
+            </p>
+          </div>
 
           <div className="ocr-image-preview">
             {imagePreviewUrl ? (
@@ -776,7 +1088,8 @@ function OcrTool({
               <p>
                 Review and correct the OCR result
                 before copying, downloading,
-                saving, or summarizing it.
+                saving, summarizing, or asking
+                questions.
               </p>
             </div>
 
@@ -1019,6 +1332,136 @@ function OcrTool({
               </button>
             </div>
           </section>
+
+          {/* =====================
+              DOCUMENT Q&A
+          ====================== */}
+
+          <section className="ocr-qa-section">
+            <div className="ocr-ai-header">
+              <div>
+                <h3>
+                  Ask Questions About Document
+                </h3>
+
+                <p>
+                  Ask AI questions using only the
+                  extracted document text.
+                </p>
+              </div>
+
+              <span className="ocr-ai-badge">
+                Q&A
+              </span>
+            </div>
+
+            <textarea
+              className="ocr-question-input"
+              value={documentQuestion}
+              onChange={(event) =>
+                handleQuestionChange(
+                  event.target.value
+                )
+              }
+              placeholder={
+                hasText
+                  ? "Ask something like: What is the main idea?"
+                  : "Extract text first before asking a question..."
+              }
+              spellCheck
+            />
+
+            <button
+              type="button"
+              className="ocr-ask-btn"
+              onClick={handleAskQuestion}
+              disabled={
+                !hasText ||
+                !hasQuestion ||
+                askingQuestion
+              }
+            >
+              {askingQuestion
+                ? "Thinking..."
+                : "Ask AI"}
+            </button>
+
+            {qaMessage && (
+              <div className="ocr-success">
+                {qaMessage}
+              </div>
+            )}
+
+            {qaError && (
+              <div className="ocr-error">
+                {qaError}
+              </div>
+            )}
+
+            <div className="ocr-summary-stats">
+              <span>
+                {answerWordCount}{" "}
+                {answerWordCount === 1
+                  ? "word"
+                  : "words"}
+              </span>
+
+              <span>
+                document answer
+              </span>
+            </div>
+
+            <textarea
+              className="ocr-answer-textarea"
+              value={documentAnswer}
+              onChange={(event) =>
+                handleAnswerChange(
+                  event.target.value
+                )
+              }
+              placeholder={
+                hasText
+                  ? "AI answer will appear here..."
+                  : "Extract text first..."
+              }
+              spellCheck
+            />
+
+            <div className="ocr-summary-actions">
+              <button
+                type="button"
+                onClick={handleCopyAnswer}
+                disabled={!hasAnswer}
+              >
+                Copy Answer
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownloadAnswer}
+                disabled={!hasAnswer}
+              >
+                Download Answer
+              </button>
+
+              <button
+                type="button"
+                className="ocr-save-summary-btn"
+                onClick={handleSaveAnswerToCloud}
+                disabled={
+                  !hasAnswer ||
+                  savingAnswerToCloud ||
+                  answerSavedToCloud
+                }
+              >
+                {savingAnswerToCloud
+                  ? "Saving..."
+                  : answerSavedToCloud
+                    ? "Saved ✓"
+                    : "Save Answer"}
+              </button>
+            </div>
+          </section>
         </section>
       </div>
     </section>
@@ -1098,6 +1541,28 @@ function createSummaryFileName(
     : "scanify-document";
 
   return `${baseName}-${summaryType}-summary.txt`;
+}
+
+// =========================
+// CREATE ANSWER FILE NAME
+// =========================
+
+function createAnswerFileName(
+  originalName?: string
+) {
+  const baseName = originalName
+    ? originalName.replace(
+        /\.[^/.]+$/,
+        ""
+      )
+    : "scanify-document";
+
+  const timestamp =
+    new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-");
+
+  return `${baseName}-answer-${timestamp}.txt`;
 }
 
 export default OcrTool;
