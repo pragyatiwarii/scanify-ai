@@ -12,9 +12,19 @@ import {
   uploadDocumentToCloud,
 } from "../api/storageApi";
 
+import {
+  summarizeText,
+  type SummaryType,
+} from "../api/aiApi";
+
 type OcrToolProps = {
   selectedImage: File | null;
 };
+
+type OcrLanguage =
+  | "eng"
+  | "hin"
+  | "hin+eng";
 
 function OcrTool({
   selectedImage,
@@ -22,6 +32,11 @@ function OcrTool({
   // =========================
   // OCR STATE
   // =========================
+
+  const [
+  ocrLanguage,
+  setOcrLanguage,
+] = useState<OcrLanguage>("eng");
 
   const [
     extractedText,
@@ -49,7 +64,7 @@ function OcrTool({
   ] = useState("");
 
   // =========================
-  // CLOUD SAVE STATE
+  // OCR CLOUD SAVE STATE
   // =========================
 
   const [
@@ -71,6 +86,45 @@ function OcrTool({
     cloudSaveError,
     setCloudSaveError,
   ] = useState("");
+
+  // =========================
+  // AI SUMMARY STATE
+  // =========================
+
+  const [
+    aiSummary,
+    setAiSummary,
+  ] = useState("");
+
+  const [
+    selectedSummaryType,
+    setSelectedSummaryType,
+  ] = useState<SummaryType>("short");
+
+  const [
+    summarizing,
+    setSummarizing,
+  ] = useState(false);
+
+  const [
+    summaryMessage,
+    setSummaryMessage,
+  ] = useState("");
+
+  const [
+    summaryError,
+    setSummaryError,
+  ] = useState("");
+
+  const [
+    savingSummaryToCloud,
+    setSavingSummaryToCloud,
+  ] = useState(false);
+
+  const [
+    summarySavedToCloud,
+    setSummarySavedToCloud,
+  ] = useState(false);
 
   // =========================
   // IMAGE PREVIEW
@@ -107,6 +161,15 @@ function OcrTool({
 
     setCloudSaveMessage("");
     setCloudSaveError("");
+
+    setAiSummary("");
+    setSelectedSummaryType("short");
+
+    setSummaryMessage("");
+    setSummaryError("");
+
+    setSavingSummaryToCloud(false);
+    setSummarySavedToCloud(false);
   }, [selectedImage]);
 
   // =========================
@@ -133,6 +196,23 @@ function OcrTool({
   const hasText =
     extractedText.trim().length > 0;
 
+  const summaryWordCount = useMemo(() => {
+    const trimmedSummary =
+      aiSummary.trim();
+
+    if (!trimmedSummary) {
+      return 0;
+    }
+
+    return trimmedSummary
+      .split(/\s+/)
+      .filter(Boolean)
+      .length;
+  }, [aiSummary]);
+
+  const hasSummary =
+    aiSummary.trim().length > 0;
+
   // =========================
   // EXTRACT TEXT
   // =========================
@@ -155,11 +235,16 @@ function OcrTool({
     setCloudSaveMessage("");
     setCloudSaveError("");
 
+    setAiSummary("");
+    setSummaryMessage("");
+    setSummaryError("");
+    setSummarySavedToCloud(false);
+
     try {
       const result =
         await extractTextFromImage(
           selectedImage,
-          "eng"
+          ocrLanguage
         );
 
       setExtractedText(result.text);
@@ -190,7 +275,7 @@ function OcrTool({
   };
 
   // =========================
-  // EDIT TEXT
+  // EDIT OCR TEXT
   // =========================
 
   const handleTextChange = (
@@ -200,8 +285,6 @@ function OcrTool({
 
     setSuccessMessage("");
 
-    // If the user edits text after saving,
-    // allow the updated version to be saved again.
     if (savedToCloud) {
       setSavedToCloud(false);
 
@@ -210,11 +293,20 @@ function OcrTool({
       );
     }
 
+    if (aiSummary) {
+      setSummaryMessage(
+        "OCR text changed. Generate the summary again for the updated text."
+      );
+
+      setSummarySavedToCloud(false);
+    }
+
     setCloudSaveError("");
+    setSummaryError("");
   };
 
   // =========================
-  // COPY TEXT
+  // COPY OCR TEXT
   // =========================
 
   const handleCopy = async () => {
@@ -245,7 +337,7 @@ function OcrTool({
   };
 
   // =========================
-  // DOWNLOAD TXT
+  // DOWNLOAD OCR TXT
   // =========================
 
   const handleDownload = () => {
@@ -253,37 +345,12 @@ function OcrTool({
       return;
     }
 
-    const textBlob = new Blob(
-      [extractedText],
-      {
-        type: "text/plain;charset=utf-8",
-      }
-    );
-
-    const objectUrl =
-      URL.createObjectURL(textBlob);
-
-    const downloadLink =
-      document.createElement("a");
-
-    downloadLink.href = objectUrl;
-
-    downloadLink.download =
+    downloadTextFile(
+      extractedText,
       createTextFileName(
         selectedImage?.name
-      );
-
-    document.body.appendChild(
-      downloadLink
+      )
     );
-
-    downloadLink.click();
-
-    downloadLink.remove();
-
-    setTimeout(() => {
-      URL.revokeObjectURL(objectUrl);
-    }, 1000);
 
     setSuccessMessage(
       "Text file downloaded successfully."
@@ -293,7 +360,7 @@ function OcrTool({
   };
 
   // =========================
-  // SAVE TXT TO CLOUD
+  // SAVE OCR TXT TO CLOUD
   // =========================
 
   const handleSaveToCloud = async () => {
@@ -340,18 +407,210 @@ function OcrTool({
         error
       );
 
-      const errorMessage =
+      const message =
         error instanceof Error
           ? error.message
           : "Could not save text to cloud.";
 
-      setCloudSaveError(
-        errorMessage
-      );
+      setCloudSaveError(message);
     } finally {
       setSavingToCloud(false);
     }
   };
+
+  // =========================
+  // AI SUMMARIZATION
+  // =========================
+
+  const handleSummarize = async (
+    summaryType: SummaryType
+  ) => {
+    if (!hasText) {
+      setSummaryError(
+        "Extract or paste text before summarizing."
+      );
+
+      return;
+    }
+
+    setSelectedSummaryType(
+      summaryType
+    );
+
+    setSummarizing(true);
+
+    setSummaryMessage("");
+    setSummaryError("");
+
+    setSummarySavedToCloud(false);
+
+    try {
+      const result =
+        await summarizeText(
+          extractedText,
+          summaryType
+        );
+
+      setAiSummary(
+        result.summary
+      );
+
+      setSummaryMessage(
+        result.was_truncated
+          ? "Summary generated. Long text was shortened before sending to AI."
+          : "Summary generated successfully."
+      );
+    } catch (error) {
+      console.error(
+        "AI summary error:",
+        error
+      );
+
+      setSummaryError(
+        "Could not generate AI summary."
+      );
+    } finally {
+      setSummarizing(false);
+    }
+  };
+
+  // =========================
+  // EDIT SUMMARY
+  // =========================
+
+  const handleSummaryChange = (
+    newSummary: string
+  ) => {
+    setAiSummary(newSummary);
+
+    setSummaryMessage("");
+
+    if (summarySavedToCloud) {
+      setSummarySavedToCloud(false);
+
+      setSummaryMessage(
+        "Summary changed. Save again to store the updated version."
+      );
+    }
+
+    setSummaryError("");
+  };
+
+  // =========================
+  // COPY SUMMARY
+  // =========================
+
+  const handleCopySummary = async () => {
+    if (!hasSummary) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        aiSummary
+      );
+
+      setSummaryMessage(
+        "Summary copied to clipboard."
+      );
+
+      setSummaryError("");
+    } catch (error) {
+      console.error(
+        "Summary copy error:",
+        error
+      );
+
+      setSummaryError(
+        "Could not copy summary."
+      );
+    }
+  };
+
+  // =========================
+  // DOWNLOAD SUMMARY
+  // =========================
+
+  const handleDownloadSummary = () => {
+    if (!hasSummary) {
+      return;
+    }
+
+    downloadTextFile(
+      aiSummary,
+      createSummaryFileName(
+        selectedImage?.name,
+        selectedSummaryType
+      )
+    );
+
+    setSummaryMessage(
+      "Summary downloaded successfully."
+    );
+
+    setSummaryError("");
+  };
+
+  // =========================
+  // SAVE SUMMARY TO CLOUD
+  // =========================
+
+  const handleSaveSummaryToCloud =
+    async () => {
+      if (!hasSummary) {
+        setSummaryError(
+          "There is no summary to save."
+        );
+
+        return;
+      }
+
+      if (summarySavedToCloud) {
+        return;
+      }
+
+      setSavingSummaryToCloud(true);
+
+      setSummaryMessage("");
+      setSummaryError("");
+
+      try {
+        const summaryFile = new File(
+          [aiSummary],
+          createSummaryFileName(
+            selectedImage?.name,
+            selectedSummaryType
+          ),
+          {
+            type: "text/plain;charset=utf-8",
+          }
+        );
+
+        await uploadDocumentToCloud(
+          summaryFile
+        );
+
+        setSummarySavedToCloud(true);
+
+        setSummaryMessage(
+          "AI summary saved privately to My Documents."
+        );
+      } catch (error) {
+        console.error(
+          "Summary cloud save error:",
+          error
+        );
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Could not save summary to cloud.";
+
+        setSummaryError(message);
+      } finally {
+        setSavingSummaryToCloud(false);
+      }
+    };
 
   return (
     <section className="tool-card ocr-tool">
@@ -365,8 +624,9 @@ function OcrTool({
         </h2>
 
         <p className="tool-description">
-          Extract, review, edit, copy, download,
-          and privately save text from document images.
+          Extract, review, edit, summarize,
+          download, and privately save text
+          from document images.
         </p>
       </div>
 
@@ -403,6 +663,55 @@ function OcrTool({
                 : "No image selected"}
             </strong>
           </div>
+
+          <div className="ocr-language-control">
+  <label htmlFor="ocr-language">
+    OCR Language
+  </label>
+
+  <select
+    id="ocr-language"
+    value={ocrLanguage}
+    onChange={(event) => {
+      const newLanguage =
+        event.target.value as OcrLanguage;
+
+      setOcrLanguage(newLanguage);
+
+      setExtractedText("");
+      setAiSummary("");
+
+      setSuccessMessage("");
+      setErrorMessage("");
+
+      setCloudSaveMessage("");
+      setCloudSaveError("");
+
+      setSummaryMessage("");
+      setSummaryError("");
+
+      setSavedToCloud(false);
+      setSummarySavedToCloud(false);
+    }}
+  >
+    <option value="eng">
+      English
+    </option>
+
+    <option value="hin">
+      Hindi
+    </option>
+
+    <option value="hin+eng">
+      Hindi + English
+    </option>
+  </select>
+
+  <p>
+    Choose Hindi for Devanagari documents.
+    Use Hindi + English for mixed pages.
+  </p>
+</div>
 
           <div className="ocr-image-preview">
             {imagePreviewUrl ? (
@@ -466,8 +775,8 @@ function OcrTool({
 
               <p>
                 Review and correct the OCR result
-                before copying, downloading, or
-                saving it.
+                before copying, downloading,
+                saving, or summarizing it.
               </p>
             </div>
 
@@ -534,7 +843,7 @@ function OcrTool({
                 ? "Saving..."
                 : savedToCloud
                   ? "Saved ✓"
-                  : "Save to My Documents"}
+                  : "Save Text"}
             </button>
           </div>
 
@@ -549,6 +858,167 @@ function OcrTool({
               {cloudSaveError}
             </div>
           )}
+
+          {/* =====================
+              AI SUMMARY
+          ====================== */}
+
+          <section className="ocr-ai-section">
+            <div className="ocr-ai-header">
+              <div>
+                <h3>
+                  AI Document Summary
+                </h3>
+
+                <p>
+                  Generate a summary from the extracted
+                  text using your AICredits connection.
+                </p>
+              </div>
+
+              <span className="ocr-ai-badge">
+                AI
+              </span>
+            </div>
+
+            <div className="ocr-summary-mode-buttons">
+              <button
+                type="button"
+                className={
+                  selectedSummaryType === "short"
+                    ? "active"
+                    : ""
+                }
+                onClick={() =>
+                  handleSummarize("short")
+                }
+                disabled={
+                  !hasText ||
+                  summarizing
+                }
+              >
+                Short Summary
+              </button>
+
+              <button
+                type="button"
+                className={
+                  selectedSummaryType === "detailed"
+                    ? "active"
+                    : ""
+                }
+                onClick={() =>
+                  handleSummarize("detailed")
+                }
+                disabled={
+                  !hasText ||
+                  summarizing
+                }
+              >
+                Detailed Summary
+              </button>
+
+              <button
+                type="button"
+                className={
+                  selectedSummaryType === "bullets"
+                    ? "active"
+                    : ""
+                }
+                onClick={() =>
+                  handleSummarize("bullets")
+                }
+                disabled={
+                  !hasText ||
+                  summarizing
+                }
+              >
+                Study Notes
+              </button>
+            </div>
+
+            {summarizing && (
+              <div className="ocr-ai-loading">
+                Generating AI summary...
+              </div>
+            )}
+
+            {summaryMessage && (
+              <div className="ocr-success">
+                {summaryMessage}
+              </div>
+            )}
+
+            {summaryError && (
+              <div className="ocr-error">
+                {summaryError}
+              </div>
+            )}
+
+            <div className="ocr-summary-stats">
+              <span>
+                {summaryWordCount}{" "}
+                {summaryWordCount === 1
+                  ? "word"
+                  : "words"}
+              </span>
+
+              <span>
+                {selectedSummaryType}
+              </span>
+            </div>
+
+            <textarea
+              className="ocr-summary-textarea"
+              value={aiSummary}
+              onChange={(event) =>
+                handleSummaryChange(
+                  event.target.value
+                )
+              }
+              placeholder={
+                hasText
+                  ? "Choose Short Summary, Detailed Summary, or Study Notes..."
+                  : "Extract text first to generate an AI summary..."
+              }
+              spellCheck
+            />
+
+            <div className="ocr-summary-actions">
+              <button
+                type="button"
+                onClick={handleCopySummary}
+                disabled={!hasSummary}
+              >
+                Copy Summary
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownloadSummary}
+                disabled={!hasSummary}
+              >
+                Download Summary
+              </button>
+
+              <button
+                type="button"
+                className="ocr-save-summary-btn"
+                onClick={handleSaveSummaryToCloud}
+                disabled={
+                  !hasSummary ||
+                  savingSummaryToCloud ||
+                  summarySavedToCloud
+                }
+              >
+                {savingSummaryToCloud
+                  ? "Saving..."
+                  : summarySavedToCloud
+                    ? "Saved ✓"
+                    : "Save Summary"}
+              </button>
+            </div>
+          </section>
         </section>
       </div>
     </section>
@@ -556,7 +1026,44 @@ function OcrTool({
 }
 
 // =========================
-// CREATE TXT FILE NAME
+// DOWNLOAD TEXT FILE
+// =========================
+
+function downloadTextFile(
+  text: string,
+  fileName: string
+) {
+  const textBlob = new Blob(
+    [text],
+    {
+      type: "text/plain;charset=utf-8",
+    }
+  );
+
+  const objectUrl =
+    URL.createObjectURL(textBlob);
+
+  const downloadLink =
+    document.createElement("a");
+
+  downloadLink.href = objectUrl;
+  downloadLink.download = fileName;
+
+  document.body.appendChild(
+    downloadLink
+  );
+
+  downloadLink.click();
+
+  downloadLink.remove();
+
+  setTimeout(() => {
+    URL.revokeObjectURL(objectUrl);
+  }, 1000);
+}
+
+// =========================
+// CREATE OCR TXT FILE NAME
 // =========================
 
 function createTextFileName(
@@ -573,6 +1080,24 @@ function createTextFileName(
     );
 
   return `${nameWithoutExtension}-ocr.txt`;
+}
+
+// =========================
+// CREATE SUMMARY FILE NAME
+// =========================
+
+function createSummaryFileName(
+  originalName: string | undefined,
+  summaryType: SummaryType
+) {
+  const baseName = originalName
+    ? originalName.replace(
+        /\.[^/.]+$/,
+        ""
+      )
+    : "scanify-document";
+
+  return `${baseName}-${summaryType}-summary.txt`;
 }
 
 export default OcrTool;

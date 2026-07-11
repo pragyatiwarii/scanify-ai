@@ -19,7 +19,19 @@ from image_utils import (
 )
 from ocr_utils import extract_text_from_image
 
+from pydantic import BaseModel
+
+from ai_utils import summarize_document_text
+
 app = FastAPI()
+
+# =========================
+# REQUEST MODELS
+# =========================
+
+class SummarizeTextRequest(BaseModel):
+    text: str
+    summary_type: str = "short"
 
 
 # =========================
@@ -760,7 +772,11 @@ async def extract_text(
     file: UploadFile = File(...),
     language: str = Form("eng"),
 ):
-    allowed_languages = ["eng"]
+    allowed_languages = [
+    "eng",
+    "hin",
+    "hin+eng",
+]
 
     if language not in allowed_languages:
         raise HTTPException(
@@ -841,3 +857,65 @@ async def extract_text(
     finally:
         if os.path.exists(input_path):
             os.remove(input_path)
+
+# =========================
+# SUMMARIZE TEXT WITH AI
+# =========================
+
+@app.post("/summarize-text")
+async def summarize_text(
+    request: SummarizeTextRequest,
+):
+    allowed_summary_types = [
+        "short",
+        "detailed",
+        "bullets",
+    ]
+
+    if request.summary_type not in allowed_summary_types:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "summary_type must be one of: "
+                "short, detailed, bullets"
+            ),
+        )
+
+    if not request.text.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Text cannot be empty",
+        )
+
+    try:
+        result = summarize_document_text(
+            text=request.text,
+            summary_type=request.summary_type,
+        )
+
+        return {
+            "message": (
+                "Text summarized successfully"
+            ),
+            **result,
+        }
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+    except Exception as error:
+        print(
+            "AI summarization error:",
+            error,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Could not summarize text "
+                "with AI"
+            ),
+        )
